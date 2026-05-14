@@ -27,8 +27,15 @@ data/motions/asimov-v1-pyroki-full/*
 # Local Claude / IDE state
 .claude/settings.local.json
 
-# Infra vars
+# Terraform local state, plan caches, provider mirror, and tfvars (may hold
+# secrets). The provider lock file (.terraform.lock.hcl) is intentionally
+# tracked.
 *.tfvars
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
 
 # Hydra
 outputs/

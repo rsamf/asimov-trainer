@@ -24,7 +24,6 @@ from typing import Union
 
 import mujoco
 import numpy as np
-import pyroki as pk
 import torch
 import yourdfpy
 
@@ -179,8 +178,7 @@ class MotionRef:
         urdf = yourdfpy.URDF.load(
             str(asimov_urdf), mesh_dir=str(Path(asimov_urdf).parent)
         )
-        urdf_robot = pk.Robot.from_urdf(urdf)
-        urdf_joint_order = list(urdf_robot.joints.actuated_names)
+        urdf_joint_order = list(urdf.actuated_joint_names)
         if len(urdf_joint_order) != n_joints:
             raise ValueError(
                 f"URDF reports {len(urdf_joint_order)} actuated joints; "

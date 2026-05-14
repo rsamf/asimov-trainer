@@ -19,9 +19,17 @@ dependencies = [
     # Visualisation
     "rerun-sdk>=0.31.3",
     "viser>=0.2.23",          # playback viewer + interactive retarget tuner
-    # Retargeting (kinematics)
-    "pyroki",                 # editable local clone
-    "yourdfpy>=0.0.50",       # URDF parser used alongside pyroki
+    # URDF parsing (used by dancer + retargeting)
+    "yourdfpy>=0.0.50",
+]
+
+[dependency-groups]
+# Optional: only needed to (re)generate retargeted motion .npz files from
+# LAFAN1 G1 motions via the `retargeting/pyroki/` CLIs. Not installed in the
+# training container — the trainer consumes the committed .npz directly.
+# Local devs: `uv sync --group retarget`.
+retarget = [
+    "pyroki",
 ]
 
 [tool.uv.sources]

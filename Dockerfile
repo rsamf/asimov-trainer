@@ -1,12 +1,7 @@
 # Container image for the dancer/ PPO training package.
 #
 # Base on CUDA 12.4 runtime to match the torch cu124 pin in pyproject.toml.
-# Driver requirement: >= 12.4 (we run on 12.6).
-#
-# Build context expectations (run deploy/prepare-build-context.sh first):
-#   ./pyroki/                                  — sibling repo materialised
-#   ./data/robot/asimov-v1/                    — symlink resolved to real dir
-#   ./data/motions/asimov-v1-pyroki-full/      — already a real dir + .npz
+# Driver requirement: >= 12.4.
 FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -31,15 +26,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
     && ln -s /root/.local/bin/uv /usr/local/bin/uv
 
-# pyroki lives at /pyroki so that pyproject.toml's `path = "../pyroki"`
-# resolves from /app/../pyroki = /pyroki. Avoids editing the manifest or lock.
-COPY pyroki /pyroki
-
 WORKDIR /app
 
-# Dependency layer: only invalidated when lock/manifest change.
+# Dependency layer. pyroki lives in the `retarget` dep group (offline use only)
+# and is intentionally excluded from the container — the trainer reads the
+# pre-retargeted .npz directly.
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev --no-default-groups
 
 # CLAUDE.md sharp edge: uv sync can pull a torch wheel without the right NCCL
 # pin, manifesting as ImportError: libnccl.so.2 / undefined ncclCommWindow*.
@@ -55,9 +48,9 @@ COPY dancer/ ./dancer/
 COPY data/robot/asimov-v1/ ./data/robot/asimov-v1/
 COPY data/motions/asimov-v1-pyroki-full/ ./data/motions/asimov-v1-pyroki-full/
 
-# Sanity check at build time — fail fast if the symlinks weren't resolved.
+# Sanity check at build time.
 RUN test -f data/robot/asimov-v1/xmls/asimov.xml \
-        || (echo 'ERROR: data/robot/asimov-v1/xmls/asimov.xml missing. Run deploy/prepare-build-context.sh before docker build (see infra/README.md).' && exit 1) \
+        || (echo 'ERROR: data/robot/asimov-v1/xmls/asimov.xml missing.' && exit 1) \
     && test -f data/motions/asimov-v1-pyroki-full/dance1_subject3_keypoints_retargeted.npz \
         || (echo 'ERROR: motion .npz missing.' && exit 1)
 

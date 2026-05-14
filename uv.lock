@@ -74,11 +74,15 @@ dependencies = [
     { name = "nebo" },
     { name = "newton" },
     { name = "numpy" },
-    { name = "pyroki" },
     { name = "rerun-sdk" },
     { name = "torch" },
     { name = "viser" },
     { name = "yourdfpy" },
+]
+
+[package.dev-dependencies]
+retarget = [
+    { name = "pyroki" },
 ]
 
 [package.metadata]
@@ -90,12 +94,14 @@ requires-dist = [
     { name = "nebo", specifier = ">=0.2.2" },
     { name = "newton", specifier = ">=1.2.0" },
     { name = "numpy", specifier = ">=1.21.1" },
-    { name = "pyroki", editable = "../pyroki" },
     { name = "rerun-sdk", specifier = ">=0.31.3" },
     { name = "torch", specifier = ">=2.6.0", index = "https://download.pytorch.org/whl/cu124" },
     { name = "viser", specifier = ">=0.2.23" },
     { name = "yourdfpy", specifier = ">=0.0.50" },
 ]
+
+[package.metadata.requires-dev]
+retarget = [{ name = "pyroki", editable = "../pyroki" }]
 
 [[package]]
 name = "attrs"

@@ -18,28 +18,8 @@ jobs:
     env:
       ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
     steps:
-      - name: Checkout asimov-trainer
+      - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Checkout pyroki (sibling editable dep)
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ vars.PYROKI_REPO }}
-          path: vendor/pyroki
-          token: ${{ secrets.GH_VENDOR_PAT || github.token }}
-
-      - name: Checkout local-robot-files (robot URDF/MJCF + meshes)
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ vars.LOCAL_ROBOT_FILES_REPO }}
-          path: vendor/local-robot-files
-          token: ${{ secrets.GH_VENDOR_PAT || github.token }}
-
-      - name: Prepare docker build context
-        env:
-          PYROKI_SRC: vendor/pyroki
-          LOCAL_ROBOT_FILES_SRC: vendor/local-robot-files
-        run: deploy/prepare-build-context.sh
 
       - name: Azure login (OIDC)
         uses: azure/login@v2
