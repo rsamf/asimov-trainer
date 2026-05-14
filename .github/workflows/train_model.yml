@@ -65,10 +65,11 @@ jobs:
           python-version: '3.12'
 
       - name: Install submission deps
-        # marshmallow<4: azure-ai-ml 1.21 imports `_T` from marshmallow.fields,
-        # which was removed in marshmallow 4.0. The SDK's own install_requires
-        # doesn't cap marshmallow, so we pin it here.
-        run: pip install 'azure-ai-ml==1.21.*' 'azure-identity==1.19.*' 'marshmallow<4' pyyaml
+        # azure-ai-ml 1.21 imports `_T` from marshmallow.fields. That symbol was
+        # moved internally in marshmallow 3.21 and removed entirely in 4.0, so
+        # we need <3.21 (not just <4). The SDK's own install_requires doesn't
+        # cap marshmallow tightly enough.
+        run: pip install 'azure-ai-ml==1.21.*' 'azure-identity==1.19.*' 'marshmallow<3.21' pyyaml
 
       - name: Submit Azure ML Training Job
         env:
