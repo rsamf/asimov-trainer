@@ -1,0 +1,13 @@
+robot_xml: data/robot/asimov-v1/xmls/asimov.xml
+motion_npz: data/motions/asimov-v1-pyroki-full/dance1_subject3_keypoints_retargeted.npz
+num_envs: 1024
+dt: 0.0166667          # 60 Hz physics  (motion source is 30 Hz → upsample=2)
+control_decimation: 2  # policy runs at 30 Hz (one motion frame per policy step)
+episode_len: 600       # max policy steps per episode (~20s at 30 Hz)
+kp: 100.0
+kd: 5.0
+action_scale: 0.5      # residual action multiplier (rad)
+lookahead_K: 4         # # future policy steps included in obs
+z_fall: 0.30           # pelvis height below this = fallen
+up_dot_min: 0.5        # cos(angle between robot-up and world-up) below this = fallen
+joint_err_done: 1.5    # mean |q_act - ref_q_act| above this terminates the episode

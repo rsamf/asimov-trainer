@@ -1,0 +1,12 @@
+iterations: 2000
+rollout_len: 32
+mb_size: 16384
+n_epochs: 5
+clip: 0.2
+gamma: 0.99
+lam: 0.95
+lr: 3.0e-4
+entropy_coef: 0.001
+value_coef: 0.5
+max_grad_norm: 1.0
+target_kl: 0.02

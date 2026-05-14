@@ -1,0 +1,8 @@
+w_jp: 0.50            # joint position (actuated only)
+w_jv: 0.10            # joint velocity (actuated only)
+w_rh: 0.20            # root height
+w_rp: 0.05            # root planar pos
+w_rq: 0.15            # root orientation
+w_fall: 1.0           # per-step fallen penalty (negative)
+w_action: 0.005       # action L2 penalty
+w_alive: 0.05         # per-step alive bonus

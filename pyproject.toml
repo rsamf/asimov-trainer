@@ -1,14 +1,37 @@
 [project]
 name = "asimov-trainer"
 version = "0.1.0"
-description = "Add your description here"
+description = "Motion-imitation RL training + LAFAN1 retargeting for the Asimov-v1 humanoid."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "hydr8>=0.2.0",
+    # Configs + logging
     "hydra-core>=1.3.2",
-    "mujoco>=3.8.0",
+    "hydr8>=0.2.0",
     "nebo>=0.2.2",
-    "newton>=1.1.0",
-    "torch>=2.11.0",
+    # Numerics
+    "numpy>=1.21.1",
+    "torch>=2.6.0",
+    # Physics + simulation
+    "mujoco>=3.8.1",          # MJCF parsing + native viewer (used at dev time only)
+    "mujoco-warp>=3.8.1",     # Newton's MuJoCo solver backend
+    "newton>=1.2.0",          # primary sim
+    # Visualisation
+    "rerun-sdk>=0.31.3",
+    "viser>=0.2.23",          # playback viewer + interactive retarget tuner
+    # Retargeting (kinematics)
+    "pyroki",                 # editable local clone
+    "yourdfpy>=0.0.50",       # URDF parser used alongside pyroki
 ]
+
+[tool.uv.sources]
+pyroki = { path = "../pyroki", editable = true }
+# Pin torch to the CUDA 12.4 wheel index. The default PyPI wheel for torch
+# 2.6+ is built against CUDA 13.0, which fails on the dev machine (driver
+# 12.6). The cu124 wheel works against driver >= 12.4.
+torch = { index = "pytorch-cu124" }
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true

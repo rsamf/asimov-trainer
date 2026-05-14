@@ -1,0 +1,10 @@
+# Hydra overrides applied on top of dancer/configs/train.yaml at job start.
+# Each entry is a CLI override string, exactly what you'd type after
+# `python -m dancer.train`.
+#
+# Tune these per branch — they're what the submit script appends to the
+# training command. Keep `viewer.kind=null` for headless AML runs.
+
+overrides:
+  - viewer.kind=null
+  - device=cuda:0

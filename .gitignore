@@ -8,3 +8,27 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Training artifacts
+runs/
+*.rrd
+*.usd
+*.ckpt
+
+# Retargeting artifacts (regenerable from LAFAN1)
+data/motions/g1-keypoints/
+data/motions/g1-keypoints-full/
+data/motions/asimov-v1-pyroki/
+# `asimov-v1-pyroki-full/` is the policy-frequency retarget that ships in the
+# training container — track its .npz so CI checkouts get the motion data.
+data/motions/asimov-v1-pyroki-full/*
+!data/motions/asimov-v1-pyroki-full/*.npz
+
+# Local Claude / IDE state
+.claude/settings.local.json
+
+# Infra vars
+*.tfvars
+
+# Hydra
+outputs/

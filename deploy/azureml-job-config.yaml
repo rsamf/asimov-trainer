@@ -1,0 +1,15 @@
+# Azure ML serverless compute settings for the dancer/ training job.
+# Submitted by deploy/submit_azureml_job.py.
+
+experiment_name: dancer-ppo
+display_name_prefix: dancer
+
+# Serverless: AML provisions a node of this instance type per submitted job
+# and tears it down on completion. No cluster to manage.
+# Standard_NC6s_v3 = single V100 16GB.
+instance_type: Standard_NC6s_v3
+instance_count: 1
+
+# Optional: extra env vars injected into the training container.
+# environment_variables:
+#   NEBO_API_KEY: ...

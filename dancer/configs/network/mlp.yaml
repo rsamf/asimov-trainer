@@ -1,0 +1,4 @@
+hidden_sizes: [1024, 1024]
+activation: elu
+log_std_init: -0.7        # log(0.5)
+learnable_log_std: false

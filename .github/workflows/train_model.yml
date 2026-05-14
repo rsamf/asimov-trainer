@@ -1,0 +1,101 @@
+name: Train Model on Azure ML
+
+on:
+  push:
+    branches:
+      - models
+      - models/*
+
+permissions:
+  id-token: write   # required for OIDC token exchange with Azure AD
+  contents: read
+
+jobs:
+  train:
+    name: Build and Submit Training Job
+    runs-on: ubuntu-latest
+    environment: azure-ml      # subject of the Azure federated credential
+    env:
+      ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+    steps:
+      - name: Checkout asimov-trainer
+        uses: actions/checkout@v4
+
+      - name: Checkout pyroki (sibling editable dep)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.PYROKI_REPO }}
+          path: vendor/pyroki
+          token: ${{ secrets.GH_VENDOR_PAT || github.token }}
+
+      - name: Checkout local-robot-files (robot URDF/MJCF + meshes)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.LOCAL_ROBOT_FILES_REPO }}
+          path: vendor/local-robot-files
+          token: ${{ secrets.GH_VENDOR_PAT || github.token }}
+
+      - name: Prepare docker build context
+        env:
+          PYROKI_SRC: vendor/pyroki
+          LOCAL_ROBOT_FILES_SRC: vendor/local-robot-files
+        run: deploy/prepare-build-context.sh
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: ACR login
+        run: az acr login --name "$ACR_NAME"
+
+      - name: Calculate Short SHA
+        id: short-sha
+        run: echo "sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Extract branch sub-name
+        id: branch-info
+        run: |
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          if [[ "$BRANCH" == models/* ]]; then
+            echo "suffix=-${BRANCH#models/}" >> $GITHUB_OUTPUT
+          else
+            echo "suffix=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push to ACR
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ vars.AZURE_ACR_NAME }}.azurecr.io/asimov-trainer:${{ steps.short-sha.outputs.sha }}
+            ${{ vars.AZURE_ACR_NAME }}.azurecr.io/asimov-trainer:latest
+          cache-from: type=registry,ref=${{ vars.AZURE_ACR_NAME }}.azurecr.io/asimov-trainer:latest
+          cache-to: type=inline
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install submission deps
+        run: pip install azure-ai-ml==1.21.* azure-identity==1.19.* pyyaml
+
+      - name: Submit Azure ML Training Job
+        env:
+          SHORT_SHA: ${{ steps.short-sha.outputs.sha }}
+        run: |
+          python deploy/submit_azureml_job.py \
+            --job-name "${SHORT_SHA}${{ steps.branch-info.outputs.suffix }}" \
+            --image-uri "${{ vars.AZURE_ACR_NAME }}.azurecr.io/asimov-trainer:${SHORT_SHA}" \
+            --subscription-id "${{ vars.AZURE_SUBSCRIPTION_ID }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --workspace-name "${{ vars.AZURE_AML_WORKSPACE }}" \
+            --config deploy/azureml-job-config.yaml \
+            --hydra-config deploy/train-config.yaml

@@ -1,0 +1,52 @@
+.git
+.gitignore
+.github
+.venv
+__pycache__
+**/__pycache__
+*.py[oc]
+*.egg-info
+build
+dist
+wheels
+
+# Local dev / IDE state
+.claude
+.vscode
+.idea
+
+# Infra + deploy live outside the image
+infra
+deploy
+terraform.tfstate*
+*.tfvars
+
+# Training artifacts
+runs
+outputs
+*.rrd
+*.usd
+*.ckpt
+*.log
+
+# Tests are not needed at runtime
+tests
+
+# Plan / scratch
+*.md
+!README.md
+
+# Motion variants we don't ship in the image
+data/motions/g1
+data/motions/g1-keypoints
+data/motions/g1-keypoints-full
+data/motions/asimov-v1-pyroki
+data/robot/g1
+
+# pyroki materialised here by deploy/prepare-build-context.sh — keep it in the
+# context but trim its own dev artifacts (the prep script already does this).
+!pyroki
+pyroki/.venv
+pyroki/.git
+pyroki/__pycache__
+pyroki/**/__pycache__

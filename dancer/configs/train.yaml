@@ -1,0 +1,29 @@
+defaults:
+  - env: dance
+  - algo: ppo
+  - network: mlp
+  - reward: deepmimic
+  - _self_
+
+experiment_name: dance1_subject3_v1
+seed: 0
+device: cuda:0
+log_dir: runs
+
+eval:
+  every: 25          # iterations between eval rollouts
+  greedy: true
+  save_npz: true     # write playback .npz under runs/<run>/eval_<iter>.npz
+
+viewer:
+  # Choose one of: null (off), "rerun", "viser", "gl", "usd"
+  # - "rerun":  streams to a Rerun web viewer at http://localhost:9090
+  # - "viser":  streams to a viser server at http://localhost:8080
+  # - "gl":     opens a native OpenGL window (no remote access)
+  # - "usd":    writes a USD timeline to `runs/<run>/viewer.usd`
+  # - null:     fast headless training (no viewer overhead)
+  kind: null
+  every_n_steps: 1      # log every N policy steps (raise to skip frames if slow)
+  world_offset_x: 1.5   # spacing between envs in the viewer along x axis (m)
+  world_offset_y: 1.5   # spacing along y (m). Total grid is laid out by Newton.
+  record_to_rrd: null   # if kind="rerun", also save a .rrd file at this path
