@@ -67,6 +67,9 @@ def _build_env(cfg: DictConfig, device: str) -> DanceEnv:
         z_fall=float(cfg.env.z_fall),
         up_dot_min=float(cfg.env.up_dot_min),
         joint_err_done=float(cfg.env.joint_err_done),
+        root_err_done=float(cfg.env.get("root_err_done", 1e9)),
+        foot_friction=float(cfg.env.get("foot_friction", 0.75)),
+        base_lookahead=bool(cfg.env.get("base_lookahead", False)),
     )
     weights = RewardWeights(
         w_jp=float(cfg.reward.w_jp),
@@ -77,6 +80,13 @@ def _build_env(cfg: DictConfig, device: str) -> DanceEnv:
         w_fall=float(cfg.reward.w_fall),
         w_action=float(cfg.reward.w_action),
         w_alive=float(cfg.reward.w_alive),
+        s_jp=float(cfg.reward.get("s_jp", 2.0)),
+        s_jv=float(cfg.reward.get("s_jv", 0.1)),
+        s_rh=float(cfg.reward.get("s_rh", 50.0)),
+        s_rp=float(cfg.reward.get("s_rp", 20.0)),
+        s_rq=float(cfg.reward.get("s_rq", 2.0)),
+        jp_per_joint=bool(cfg.reward.get("jp_per_joint", False)),
+        jp_weights=tuple(cfg.reward.get("jp_weights", []) or []),
     )
     return DanceEnv(env_cfg, weights, device=device)
 
@@ -119,7 +129,7 @@ def main(cfg: DictConfig) -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"== {run_name} ==  device={device}  log_dir={run_dir}")
-    nb.init(mode="auto")
+    nb.init()
 
     with nb.start_run(name=run_name,
                       config=OmegaConf.to_container(cfg, resolve=True)) as run:
@@ -138,6 +148,41 @@ def main(cfg: DictConfig) -> None:
         viewer_every = int(cfg.viewer.every_n_steps)
 
         model = _build_policy(cfg, env.obs_dim, env.act_dim, device)
+        # Optional warm-start: load weights + obs normaliser stats from a prior
+        # checkpoint (strict=False so a fixed-std run can seed a learnable-std
+        # run — the actor.log_std value transfers, buffer→Parameter). The Adam
+        # state is intentionally NOT restored, since lr/hparams usually change.
+        resume_from = cfg.get("resume_from", None)
+        if resume_from:
+            ckpt = torch.load(str(resume_from), map_location=device)
+            cur = model.state_dict()
+            # Keep the config's log_std (don't inherit the source run's). Support
+            # PARTIAL warm-start across an obs-dim grow (e.g. adding base
+            # lookahead): for a tensor whose dims only GREW, copy the source into
+            # the overlapping region and keep the fresh init elsewhere — and for
+            # a first-layer weight [out, in] zero the NEW input columns so the
+            # policy starts IDENTICAL to the source (new obs dims inert) and then
+            # learns to use them.
+            state, exact, grown, skipped = {}, 0, [], []
+            for k, v in ckpt["model"].items():
+                if "log_std" in k:
+                    continue
+                if k not in cur:
+                    skipped.append(k); continue
+                cw = cur[k]
+                if cw.shape == v.shape:
+                    state[k] = v; exact += 1
+                elif cw.ndim == v.ndim and all(c >= o for c, o in zip(cw.shape, v.shape)):
+                    new = cw.clone()
+                    if cw.ndim == 2 and cw.shape[0] == v.shape[0] and cw.shape[1] > v.shape[1]:
+                        new[:, v.shape[1]:] = 0.0          # new input cols inert
+                    new[tuple(slice(0, o) for o in v.shape)] = v
+                    state[k] = new; grown.append(k)
+                else:
+                    skipped.append(k)
+            missing, unexpected = model.load_state_dict(state, strict=False)
+            print(f"resumed from {resume_from}  (exact={exact}, "
+                  f"grown={grown}, skipped={skipped})")
         ppo = PPOTrainer(model, _ppo_config_from(cfg))
         buf = RolloutBuffer(env.num_envs, int(cfg.algo.rollout_len),
                             env.obs_dim, env.act_dim, torch.device(device))
@@ -183,6 +228,10 @@ def main(cfg: DictConfig) -> None:
                 _, _, last_value = model.act(obs)
             data = buf.compute_gae(last_value, ppo.cfg.gamma, ppo.cfg.lam)
             stats = ppo.update(data)
+            # Fold this rollout's observations into the policy's running
+            # normaliser AFTER the update, so the next rollout (and its update)
+            # share one fixed set of stats — keeps the first-minibatch ratio ≈ 1.
+            model.update_obs_rms(buf.obs)
             collect_t = time.perf_counter() - t0
 
             avg_ret = (sum(finished_returns) / max(1, len(finished_returns))
@@ -196,17 +245,19 @@ def main(cfg: DictConfig) -> None:
                   f"pi_l={stats['policy_loss']:+.3f}  "
                   f"v_l={stats['value_loss']:.3f}  "
                   f"H={stats['entropy']:.2f}  "
-                  f"KL={stats['kl']:.3f}  "
+                  f"KL={stats['kl']:.4f}  "
+                  f"cf={stats['clip_frac']:.2f}  "
+                  f"nup={int(stats['n_updates'])}  "
                   f"t={collect_t:.1f}s")
 
-            nb.log_metric("train/avg_return", float(avg_ret), step=it)
-            nb.log_metric("train/avg_episode_len", float(avg_len), step=it)
-            nb.log_metric("train/fall_fraction",
-                          float(n_falls / max(1, len(finished_returns))), step=it)
-            nb.log_metric("train/n_episodes", float(len(finished_returns)), step=it)
+            nb.log_line("train/avg_return", float(avg_ret), step=it)
+            nb.log_line("train/avg_episode_len", float(avg_len), step=it)
+            nb.log_line("train/fall_fraction",
+                        float(n_falls / max(1, len(finished_returns))), step=it)
+            nb.log_line("train/n_episodes", float(len(finished_returns)), step=it)
             for k, v in stats.items():
-                nb.log_metric(f"train/{k}", float(v), step=it)
-            nb.log_metric("train/sec_per_iter", collect_t, step=it)
+                nb.log_line(f"train/{k}", float(v), step=it)
+            nb.log_line("train/sec_per_iter", collect_t, step=it)
 
             if it % int(cfg.eval.every) == 0:
                 _save_checkpoint(run_dir, it, model, ppo)

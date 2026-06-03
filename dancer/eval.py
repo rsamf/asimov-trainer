@@ -39,8 +39,10 @@ def parse_args() -> argparse.Namespace:
                    help="Hydra config root to resolve from.")
     p.add_argument("--motion", type=Path, default=None,
                    help="Override the reference motion .npz path.")
-    p.add_argument("--n-steps", type=int, default=600,
-                   help="Number of policy steps to roll out.")
+    p.add_argument("--n-steps", type=int, default=None,
+                   help="Number of policy steps to roll out. "
+                        "Default: play the entire motion file once "
+                        "((motion.T_up - 1) // control_decimation steps).")
     p.add_argument("--device", type=str, default="cuda:0")
     p.add_argument("--out", type=Path, default=Path("eval.npz"))
     p.add_argument("--seed", type=int, default=0)
@@ -78,15 +80,38 @@ def main() -> None:
         kp=float(cfg.env.kp),
         kd=float(cfg.env.kd),
         action_scale=float(cfg.env.action_scale),
-        episode_len=int(args.n_steps + 1),          # don't terminate early
+        # episode_len + termination thresholds are all set to "effectively
+        # off" — the rollout loop is bounded by args.n_steps (resolved below
+        # against the motion length), and we stop before motion_end fires so
+        # the env never auto-resets mid-eval.
+        episode_len=10**9,
         lookahead_K=int(cfg.env.lookahead_K),
-        z_fall=-1e9,                                # disable fall-termination for eval
+        z_fall=-1e9,
         up_dot_min=-1.0,
-        joint_err_done=1e9,                         # disable joint-err termination
+        joint_err_done=1e9,
+        root_err_done=1e9,
+        foot_friction=float(cfg.env.get("foot_friction", 0.75)),
+        base_lookahead=bool(cfg.env.get("base_lookahead", False)),
     )
-    weights = RewardWeights(**OmegaConf.to_container(cfg.reward))
+    _rw = OmegaConf.to_container(cfg.reward)
+    if "jp_weights" in _rw and _rw["jp_weights"]:
+        _rw["jp_weights"] = tuple(_rw["jp_weights"])
+    weights = RewardWeights(**_rw)
 
     env = DanceEnv(env_cfg, weights, device=args.device)
+
+    # Resolve n_steps from the loaded motion when the user didn't pin one.
+    # `motion_end` in DanceEnv fires when next_phase >= T_up - 1 and triggers
+    # an auto-reset, so the largest clean-play count is below that boundary.
+    max_clean_steps = max(1, (env.motion.T_up - 1) // env.cfg.control_decimation)
+    if args.n_steps is None:
+        args.n_steps = max_clean_steps
+        print(f"playing full motion: {args.n_steps} policy steps "
+              f"(motion.T_up={env.motion.T_up}, control_decimation={env.cfg.control_decimation})")
+    elif args.n_steps > max_clean_steps:
+        print(f"warning: --n-steps={args.n_steps} exceeds the motion ("
+              f"{max_clean_steps} clean steps); the env will reset at the end "
+              f"and the tail of the rollout will be a fresh random-phase start.")
 
     model: Optional[ActorCritic] = None
     if args.checkpoint is not None:
@@ -146,7 +171,7 @@ def main() -> None:
     print(f"wrote {args.out}  ({args.n_steps} steps)")
     print(f"  base_pos z range: [{base_pos[:,2].min():.3f}, {base_pos[:,2].max():.3f}]")
     print(f"  joint range: [{joint_angles.min():.3f}, {joint_angles.max():.3f}]")
-    print(f"\nReplay with:  .venv/bin/python -m retargeting.pyroki.viewer {args.out}")
+    print(f"\nReplay with:  uv run python -m dancer.viewer {args.out}")
 
 
 if __name__ == "__main__":

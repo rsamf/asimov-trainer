@@ -55,12 +55,18 @@ def main() -> int:
     hydra_cfg = load_yaml(args.hydra_config)
     overrides = list(hydra_cfg.get("overrides", []))
 
-    # Force the run dir to the AML-mounted output so checkpoints survive.
-    # ${{outputs.run_dir}} is templated by AML at job start.
-    cmd_parts = ["python", "-m", "dancer.train", *overrides,
+    # Persist everything under the AML-mounted output:
+    #   - hydra run dir + dancer log_dir (checkpoints + console log)
+    #   - nebo .nebo/ (events file written by nb.init() / nb.log_line)
+    # ${{outputs.run_dir}} is templated by AML at job start to the mount path.
+    train_cmd = ["python", "-m", "dancer.train", *overrides,
                  "hydra.run.dir=${{outputs.run_dir}}",
                  "log_dir=${{outputs.run_dir}}"]
-    cmd_str = " ".join(cmd_parts)
+    cmd_str = (
+        "mkdir -p ${{outputs.run_dir}}/.nebo && "
+        "NEBO_URI=${{outputs.run_dir}}/.nebo "
+        + " ".join(train_cmd)
+    )
 
     display_name = f"{cfg.get('display_name_prefix', 'dancer')}-{args.job_name}"
 

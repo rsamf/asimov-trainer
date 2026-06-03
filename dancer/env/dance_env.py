@@ -45,6 +45,9 @@ class EnvConfig:
     z_fall: float = 0.30
     up_dot_min: float = 0.5
     joint_err_done: float = 1.5     # mean |q_act - ref_q_act| above this → done
+    root_err_done: float = 1e9      # ‖base_xy - ref_xy‖ above this → done (drift)
+    foot_friction: float = 0.75     # ground contact friction coefficient
+    base_lookahead: bool = False    # add future ref base traj (pos+heading) to obs
 
 
 class DanceEnv:
@@ -76,6 +79,7 @@ class DanceEnv:
             kp=cfg.kp,
             kd=cfg.kd,
             control_decimation=cfg.control_decimation,
+            foot_friction=cfg.foot_friction,
             device=device,
         )
 
@@ -93,6 +97,12 @@ class DanceEnv:
                              + self.sim.n_hinges + self.sim.n_hinges
                              + self.act_dim
                              + cfg.lookahead_K * self.act_dim)
+        # Future reference base trajectory: per lookahead step, egocentric planar
+        # offset (dx, dy in the current ref heading frame) + heading delta
+        # (cos, sin) → 4 dims. Lets the policy ANTICIPATE upcoming turns/travel
+        # instead of only reacting (key for matching the spinning/travelling dance).
+        if cfg.base_lookahead:
+            self.obs_dim += cfg.lookahead_K * 4
 
         # First reset on all envs.
         self.reset_all()
@@ -176,8 +186,13 @@ class DanceEnv:
             .abs().mean(dim=-1)
         )
         joint_blowup = joint_err > self.cfg.joint_err_done
+        # Planar drift from the reference trajectory: without this the policy can
+        # wander metres off-course while still "balancing", which looks like
+        # aimless stumbling rather than tracking the (travelling) dance.
+        root_err = (self.sim.base_pos[:, :2] - ref_post["base_pos"][:, :2]).norm(dim=-1)
+        root_blowup = root_err > self.cfg.root_err_done
         timeout = self.steps_in_episode >= self.cfg.episode_len
-        done = fallen | joint_blowup | motion_end | timeout
+        done = fallen | joint_blowup | root_blowup | motion_end | timeout
 
         info = dict(rinfo)
         info["motion_end"] = motion_end
@@ -212,4 +227,39 @@ class DanceEnv:
             K=self.cfg.lookahead_K,
             stride=self.cfg.control_decimation,
         ).reshape(self.num_envs, -1)
-        return torch.cat([own, lookahead], dim=-1)
+        parts = [own, lookahead]
+        if self.cfg.base_lookahead:
+            parts.append(self._base_lookahead_obs())
+        return torch.cat(parts, dim=-1)
+
+    @staticmethod
+    def _yaw_from_quat_xyzw(q: torch.Tensor) -> torch.Tensor:
+        """Yaw (rotation about world z) from an xyzw quaternion. Shape (...,)."""
+        qx, qy, qz, qw = q[..., 0], q[..., 1], q[..., 2], q[..., 3]
+        return torch.atan2(2.0 * (qw * qz + qx * qy),
+                           1.0 - 2.0 * (qy * qy + qz * qz))
+
+    def _base_lookahead_obs(self) -> torch.Tensor:
+        """Egocentric future ref base trajectory: (N, K*4).
+
+        Per future step: the reference's future base position relative to the
+        ROBOT's CURRENT base, rotated into the robot's current heading frame
+        (dx, dy = "go forward/left this much"), and the reference's future
+        heading relative to the robot's current heading (cos, sin = "turn this
+        way"). Robot-relative (not reference-relative) so it stays a corrective,
+        actionable goal even when the robot is off-track.
+        """
+        cur_pos = self.sim.base_pos                                 # (N,3) robot now
+        cur_quat = self.sim.base_quat                               # (N,4) xyzw
+        fut_pos, fut_quat = self.motion.lookahead_base(
+            self.phase_index, K=self.cfg.lookahead_K,
+            stride=self.cfg.control_decimation,
+        )
+        cur_yaw = self._yaw_from_quat_xyzw(cur_quat)               # (N,)
+        c, s = torch.cos(cur_yaw), torch.sin(cur_yaw)
+        d = fut_pos[..., :2] - cur_pos[:, None, :2]                # (N,K,2)
+        dx = c[:, None] * d[..., 0] + s[:, None] * d[..., 1]
+        dy = -s[:, None] * d[..., 0] + c[:, None] * d[..., 1]
+        dyaw = self._yaw_from_quat_xyzw(fut_quat) - cur_yaw[:, None]  # (N,K)
+        feat = torch.stack([dx, dy, torch.cos(dyaw), torch.sin(dyaw)], dim=-1)
+        return feat.reshape(self.num_envs, -1)

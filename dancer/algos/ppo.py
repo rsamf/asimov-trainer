@@ -24,6 +24,7 @@ class PPOConfig:
     value_coef: float = 0.5
     max_grad_norm: float = 1.0
     target_kl: float = 0.02
+    dual_clip: float = 3.0          # dual-clip PPO floor for adv<0 (Ye et al. 2020)
 
 
 class PPOTrainer:
@@ -59,11 +60,23 @@ class PPOTrainer:
             for start in range(0, n, mb):
                 idx = perm[start:start + mb]
                 logp, value, entropy = self.model.evaluate(b_obs[idx], b_act[idx])
+                adv = b_adv[idx]
                 ratio = (logp - b_logp_old[idx]).exp()
 
-                surr1 = ratio * b_adv[idx]
-                surr2 = ratio.clamp(1.0 - cfg.clip, 1.0 + cfg.clip) * b_adv[idx]
-                policy_loss = -torch.min(surr1, surr2).mean()
+                surr1 = ratio * adv
+                surr2 = ratio.clamp(1.0 - cfg.clip, 1.0 + cfg.clip) * adv
+                clipped = torch.min(surr1, surr2)
+                # Dual-clip PPO (Ye et al. 2020): for negative-advantage samples
+                # the standard objective is UNBOUNDED below (ratio*adv → -∞ as
+                # the ratio explodes), which produced the million-scale policy
+                # losses and divergence. Floor it at dual_c * adv so a few
+                # tail samples with huge ratios can't blow up the update.
+                dual = torch.where(
+                    adv < 0.0,
+                    torch.max(clipped, cfg.dual_clip * adv),
+                    clipped,
+                )
+                policy_loss = -dual.mean()
 
                 value_clipped = b_val_old[idx] + (value - b_val_old[idx]).clamp(
                     -cfg.clip, cfg.clip)
@@ -84,7 +97,17 @@ class PPOTrainer:
                 self.opt.step()
 
                 with torch.no_grad():
-                    approx_kl = (b_logp_old[idx] - logp).mean().item()
+                    # Schulman's k3 KL, but reported as the MEDIAN over samples.
+                    # The mean is dominated by a small (~4%) tail of high-leverage
+                    # samples whose ratios explode while the bulk of the policy
+                    # barely moves (clip_frac ~0.04). The mean read 89-235 vs a
+                    # 0.02 target and early-stopped PPO after a single minibatch,
+                    # throttling it to ~1 update/iter. The median tracks the bulk
+                    # movement, so the KL guardrail fires on real drift, not on
+                    # outliers (which dual-clip + PPO-clip already bound).
+                    logratio = (logp - b_logp_old[idx]).clamp(-10.0, 10.0)
+                    kl_per = logratio.exp() - 1.0 - logratio
+                    approx_kl = kl_per.median().item()
                     clip_frac = ((ratio - 1.0).abs() > cfg.clip).float().mean().item()
 
                 stats["policy_loss"] += float(policy_loss.item())

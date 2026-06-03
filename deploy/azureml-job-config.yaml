@@ -6,10 +6,16 @@ display_name_prefix: dancer
 
 # Serverless: AML provisions a node of this instance type per submitted job
 # and tears it down on completion. No cluster to manage.
-# Standard_NC6s_v3 = single V100 16GB.
-instance_type: Standard_NC6s_v3
+#
+# Standard_NC4as_T4_v3 = single T4 16GB, 4 vCPU, 28 GiB RAM.
+# Requires NCASv3_T4 family quota — request via Azure portal or:
+#   az ml compute list-usage -g asimov-rg -w asimov-aml -o table
+#   (look for "Standard NCASv3_T4 Family"; default new-sub quota is 0)
+instance_type: Standard_NC4as_T4_v3
 instance_count: 1
 
 # Optional: extra env vars injected into the training container.
+# NEBO_URI is set inline in the submission command so it can interpolate
+# ${{outputs.run_dir}} — don't duplicate it here.
 # environment_variables:
-#   NEBO_API_KEY: ...
+#   FOO: bar

@@ -8,7 +8,7 @@ dependencies = [
     # Configs + logging
     "hydra-core>=1.3.2",
     "hydr8>=0.2.0",
-    "nebo>=0.2.2",
+    "nebo>=0.2.8",
     # Numerics
     "numpy>=1.21.1",
     "torch>=2.6.0",
@@ -21,6 +21,9 @@ dependencies = [
     "viser>=0.2.23",          # playback viewer + interactive retarget tuner
     # URDF parsing (used by dancer + retargeting)
     "yourdfpy>=0.0.50",
+    # viser pulls this in transitively for mesh decoding; without it
+    # `import viser.extras.ViserUrdf` raises "liblzfse is missing".
+    "pyliblzfse>=0.4.1",
 ]
 
 [dependency-groups]

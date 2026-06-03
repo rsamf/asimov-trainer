@@ -74,6 +74,7 @@ dependencies = [
     { name = "nebo" },
     { name = "newton" },
     { name = "numpy" },
+    { name = "pyliblzfse" },
     { name = "rerun-sdk" },
     { name = "torch" },
     { name = "viser" },
@@ -91,9 +92,10 @@ requires-dist = [
     { name = "hydra-core", specifier = ">=1.3.2" },
     { name = "mujoco", specifier = ">=3.8.1" },
     { name = "mujoco-warp", specifier = ">=3.8.1" },
-    { name = "nebo", specifier = ">=0.2.2" },
+    { name = "nebo", specifier = ">=0.2.8" },
     { name = "newton", specifier = ">=1.2.0" },
     { name = "numpy", specifier = ">=1.21.1" },
+    { name = "pyliblzfse", specifier = ">=0.4.1" },
     { name = "rerun-sdk", specifier = ">=0.31.3" },
     { name = "torch", specifier = ">=2.6.0", index = "https://download.pytorch.org/whl/cu124" },
     { name = "viser", specifier = ">=0.2.23" },
@@ -1043,7 +1045,7 @@ wheels = [
 
 [[package]]
 name = "nebo"
-version = "0.2.2"
+version = "0.2.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastapi" },
@@ -1051,13 +1053,12 @@ dependencies = [
     { name = "msgpack" },
     { name = "numpy" },
     { name = "pillow" },
-    { name = "rich" },
     { name = "uvicorn" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4e/70/2c699b15f2f0c68473662dc3a6765ed351db579ae47f7753db6c7d4e7c4e/nebo-0.2.2.tar.gz", hash = "sha256:3319db3d85d7adad75f35ea4758c497413127a053511ed07f26a2b4ea71d2944", size = 33656262, upload-time = "2026-04-26T07:28:52.069Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d7/8f/3139ff30ea21a8312d7b4a52a3106254b1fc8f8f6c1c22f0968680fe6856/nebo-0.2.8.tar.gz", hash = "sha256:1ba75af24df8c6959b4d01debdaf436b07724778458bee6b3d3cf864bb994c19", size = 31717845, upload-time = "2026-05-19T05:59:20.96Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d2/d1/d0c070b8796ebd1d83da7a046880e577485e431b78658be5a259a0db8fc9/nebo-0.2.2-py3-none-any.whl", hash = "sha256:34f5becddd3a2b61ff763bd2d9ba0c69c414c054692867c17803c46c237bd504", size = 750364, upload-time = "2026-04-26T07:28:50.124Z" },
+    { url = "https://files.pythonhosted.org/packages/b1/89/6b25a8d33c7ada780c1d83eefb229c0cc10ddd4e1d099371fab84ca92636/nebo-0.2.8-py3-none-any.whl", hash = "sha256:5e3461b889b6bf7a6ce15e7e4ded9acf0fa7902cdb2cb67611ca592a0e5c8cd0", size = 744844, upload-time = "2026-05-19T05:59:18.835Z" },
 ]
 
 [[package]]

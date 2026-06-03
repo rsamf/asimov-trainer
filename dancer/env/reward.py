@@ -87,6 +87,25 @@ class RewardWeights:
     w_fall: float = 1.0
     w_action: float = 0.005
     w_alive: float = 0.05
+    # Sharpness of each exp() tracking term: r = exp(-s * err). Larger = the
+    # reward keeps rewarding tighter tracking instead of saturating near 1.
+    # Defaults reproduce the original hard-coded values.
+    s_jp: float = 2.0
+    s_jv: float = 0.1
+    s_rh: float = 50.0
+    s_rp: float = 20.0
+    s_rq: float = 2.0
+    # If True, the joint-position reward is the MEAN of per-joint exp() terms
+    # (mean_j exp(-s_jp*err_j^2)) instead of exp(-s_jp*mean_j err_j^2). The
+    # per-joint form does not let a few well-tracked joints mask badly-tracked
+    # ones — each joint must track to earn its share. Critical for the lateral
+    # leg joints (hip roll/yaw) that the averaged form lets the policy ignore.
+    jp_per_joint: bool = False
+    # Optional per-actuated-joint weights (length n_actuated, in actuated-name
+    # order) for the per-joint reward — lets us emphasise the balance-critical
+    # lateral leg joints (hip roll/yaw, waist) the policy tends to damp. Empty
+    # tuple = uniform. Only used when jp_per_joint is True.
+    jp_weights: tuple = ()
 
 
 def compute_reward(
@@ -116,21 +135,31 @@ def compute_reward(
     ref_qd_act = ref_joint_qd[..., actuated_idx]
 
     # --- tracking terms (each in (0, 1]) ---
-    e_jp = ((q_act - ref_q_act) ** 2).mean(dim=-1)
-    r_jp = torch.exp(-2.0 * e_jp)
+    sq_jp = (q_act - ref_q_act) ** 2
+    e_jp = sq_jp.mean(dim=-1)
+    if weights.jp_per_joint:
+        per_joint = torch.exp(-weights.s_jp * sq_jp)             # (N, n_actuated)
+        if weights.jp_weights:
+            w = torch.as_tensor(weights.jp_weights, dtype=per_joint.dtype,
+                                 device=per_joint.device)
+            r_jp = (per_joint * w).sum(dim=-1) / w.sum()
+        else:
+            r_jp = per_joint.mean(dim=-1)
+    else:
+        r_jp = torch.exp(-weights.s_jp * e_jp)
 
     e_jv = ((qd_act - ref_qd_act) ** 2).mean(dim=-1)
-    r_jv = torch.exp(-0.1 * e_jv)
+    r_jv = torch.exp(-weights.s_jv * e_jv)
 
     dz = base_pos[..., 2] - ref_base_pos[..., 2]
-    r_rh = torch.exp(-50.0 * dz * dz)
+    r_rh = torch.exp(-weights.s_rh * dz * dz)
 
     dxy = base_pos[..., :2] - ref_base_pos[..., :2]
     e_rp = (dxy * dxy).sum(dim=-1)
-    r_rp = torch.exp(-20.0 * e_rp)
+    r_rp = torch.exp(-weights.s_rp * e_rp)
 
     ang = quat_angle_distance(base_quat_xyzw, ref_base_quat_xyzw)
-    r_rq = torch.exp(-2.0 * ang * ang)
+    r_rq = torch.exp(-weights.s_rq * ang * ang)
 
     tracking = (
         weights.w_jp * r_jp

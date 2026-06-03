@@ -71,12 +71,13 @@ to walk the keypoint directory:
 ### Replaying a result
 
 ```bash
-.venv/bin/python -m retargeting.pyroki.viewer \
+uv run python -m dancer.viewer \
     data/motions/asimov-v1-pyroki/dance1_subject3_keypoints_retargeted.npz
 ```
 
-This is also what `dancer.viewer` wraps for evaluating trained policies —
-the same `.npz` schema works for both.
+The viewer lives in `dancer/viewer.py` (no jax / pyroki dependency) and
+accepts the same `.npz` schema this CLI writes — so the same command works
+for both retargeted reference motions and trained-policy rollouts.
 
 ## Output schema
 

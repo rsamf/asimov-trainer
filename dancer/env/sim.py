@@ -87,12 +87,14 @@ class NewtonSim:
         kp: float,
         kd: float,
         control_decimation: int = 1,
+        foot_friction: float = 0.75,
         device: Union[str, torch.device] = "cuda:0",
     ) -> None:
         self.num_envs = int(num_envs)
         self.dt = float(dt)
         self.kp = float(kp)
         self.kd = float(kd)
+        self.foot_friction = float(foot_friction)
         self.control_decimation = int(control_decimation)
         self.device = torch.device(device)
         self._wp_device = "cuda:0" if self.device.type == "cuda" else "cpu"
@@ -157,7 +159,7 @@ class NewtonSim:
         builder.default_shape_cfg.ke = 1.0e3
         builder.default_shape_cfg.kd = 1.0e2
         builder.default_shape_cfg.kf = 1.0e3
-        builder.default_shape_cfg.mu = 0.75
+        builder.default_shape_cfg.mu = self.foot_friction
         builder.replicate(single, self.num_envs)
         builder.add_ground_plane()
         self.model = builder.finalize()

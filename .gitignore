@@ -39,3 +39,6 @@ crash.*.log
 
 # Hydra
 outputs/
+
+# Nebo
+.nebo/

@@ -13,6 +13,44 @@ def _activation(name: str) -> nn.Module:
     return {"elu": nn.ELU, "relu": nn.ReLU, "tanh": nn.Tanh}[name.lower()]()
 
 
+class RunningMeanStd(nn.Module):
+    """Tracks a running mean/variance of observations (Welford, batched).
+
+    Stats live in registered buffers so they are saved in the checkpoint and
+    restored automatically at eval time. Updated only during rollout
+    collection (between PPO updates), never inside the optimisation epochs,
+    so that within one iteration the normalisation is fixed and the
+    first-minibatch importance ratio stays ≈ 1.
+    """
+
+    def __init__(self, dim: int, epsilon: float = 1e-4, clip: float = 5.0) -> None:
+        super().__init__()
+        self.clip = clip
+        self.register_buffer("mean", torch.zeros(dim))
+        self.register_buffer("var", torch.ones(dim))
+        self.register_buffer("count", torch.tensor(epsilon))
+
+    @torch.no_grad()
+    def update(self, x: torch.Tensor) -> None:
+        x = x.reshape(-1, x.shape[-1])
+        batch_mean = x.mean(dim=0)
+        batch_var = x.var(dim=0, unbiased=False)
+        batch_count = x.shape[0]
+        delta = batch_mean - self.mean
+        tot = self.count + batch_count
+        new_mean = self.mean + delta * batch_count / tot
+        m_a = self.var * self.count
+        m_b = batch_var * batch_count
+        m2 = m_a + m_b + delta * delta * self.count * batch_count / tot
+        self.mean.copy_(new_mean)
+        self.var.copy_(m2 / tot)
+        self.count.copy_(tot)
+
+    def normalize(self, x: torch.Tensor) -> torch.Tensor:
+        x = (x - self.mean) / torch.sqrt(self.var + 1e-8)
+        return x.clamp(-self.clip, self.clip)
+
+
 def _orthogonal_init(layer: nn.Linear, gain: float = math.sqrt(2.0)) -> None:
     nn.init.orthogonal_(layer.weight, gain=gain)
     nn.init.zeros_(layer.bias)
@@ -98,11 +136,21 @@ class ActorCritic(nn.Module):
         self.actor = Actor(obs_dim, act_dim, hidden_sizes, activation,
                            log_std_init, learnable_log_std)
         self.critic = Critic(obs_dim, hidden_sizes, activation)
+        self.obs_rms = RunningMeanStd(obs_dim)
+
+    def update_obs_rms(self, obs: torch.Tensor) -> None:
+        """Fold a batch of raw observations into the running normaliser.
+
+        Call once per iteration from the training loop (on the whole rollout),
+        not during PPO epochs — see RunningMeanStd docstring.
+        """
+        self.obs_rms.update(obs)
 
     @torch.no_grad()
     def act(self, obs: torch.Tensor, *, greedy: bool = False
             ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Returns (action, logp, value). Used during rollout collection."""
+        obs = self.obs_rms.normalize(obs)
         mean, std = self.actor(obs)
         if greedy:
             action = mean
@@ -115,6 +163,7 @@ class ActorCritic(nn.Module):
     def evaluate(self, obs: torch.Tensor, action: torch.Tensor
                  ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Returns (logp, value, entropy) for given (obs, action). For PPO updates."""
+        obs = self.obs_rms.normalize(obs)
         mean, std = self.actor(obs)
         logp = self._gaussian_logp(action, mean, std)
         entropy = 0.5 * (1.0 + math.log(2.0 * math.pi)) * self.actor.act_dim \

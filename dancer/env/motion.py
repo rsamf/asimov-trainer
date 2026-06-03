@@ -265,3 +265,11 @@ class MotionRef:
         future_idx = (idx.unsqueeze(-1) + offsets.unsqueeze(0)).clamp(max=self.T_up - 1)
         future_q = self.joint_q[future_idx]                        # (B, K, n_joints)
         return future_q[..., self.actuated_idx]
+
+    def lookahead_base(
+        self, idx: torch.Tensor, K: int, stride: int
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Future reference base pose. Returns (pos (B,K,3), quat (B,K,4) xyzw)."""
+        offsets = torch.arange(1, K + 1, device=idx.device) * stride
+        future_idx = (idx.unsqueeze(-1) + offsets.unsqueeze(0)).clamp(max=self.T_up - 1)
+        return self.base_pos[future_idx], self.base_quat[future_idx]
